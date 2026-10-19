@@ -24,6 +24,8 @@ import {
   submitBuyerPurchaseRequest,
   acceptPurchaseOrder,
   rejectPurchaseOrder,
+  dispatchPurchaseOrder,
+  updateOrderStatus,
   fetchUserOrders,
   normalizeOrder,
   createMarketplaceProduct,
@@ -248,14 +250,6 @@ export default function App() {
         return next;
       });
 
-      // Decrement available quantity in products
-      setProducts(prev => prev.map(p => {
-        if (p.id === orderData.productId) {
-          const remaining = Math.max(0, (p.availableQuantityTons || 0) - orderData.quantityTons);
-          return { ...p, availableQuantityTons: remaining, status: remaining <= 0 ? 'SOLD' : 'AVAILABLE' };
-        }
-        return p;
-      }));
 
       showToast(`✅ Purchase request ${newOrder.orderNumber} sent to farmer (${orderData.farmerName})! Status: PENDING.`);
       refreshOrders();
@@ -289,7 +283,7 @@ export default function App() {
     }
   };
 
-  // Handle Farmer Rejecting Order (Transitions PENDING -> REJECTED & Restores Inventory)
+  // Handle Farmer Rejecting Order (Transitions PENDING -> REJECTED)
   const handleRejectOrder = async (orderId) => {
     const targetOrder = orders.find(o => String(o.id) === String(orderId) || o.orderNumber === orderId);
     const res = await rejectPurchaseOrder(orderId);
@@ -308,8 +302,8 @@ export default function App() {
         return next;
       });
 
-      // Restore product quantity
-      if (targetOrder) {
+      // Restore product quantity if it was already dispatched
+      if (targetOrder && targetOrder.orderStatus === 'DISPATCHED') {
         setProducts(prev => prev.map(p => {
           if (p.title === targetOrder.productTitle || p.id === targetOrder.productId) {
             return { 
@@ -322,7 +316,7 @@ export default function App() {
         }));
       }
 
-      showToast(`❌ Order request rejected. Escrow refunded and status updated to REJECTED in buyer dashboard.`);
+      showToast(`❌ Order request rejected. Status updated to REJECTED in buyer dashboard.`);
       refreshOrders();
     } else {
       showToast(`⚠️ ${res.error || 'Failed to reject order.'}`);
@@ -344,25 +338,71 @@ export default function App() {
     }
   };
 
-  // Handle Order Status Transitions (e.g. DISPATCHED, DELIVERED)
-  const handleUpdateOrderStatus = (orderId, newStatus) => {
-    setOrders(prev => {
-      const next = prev.map(o => {
-        if (o.id === orderId) {
-          const updated = { ...o, orderStatus: newStatus };
-          if (newStatus === 'DELIVERED') {
-            updated.paymentStatus = 'RELEASED_TO_FARMER';
-            showToast(`🚚 Delivery verified! Escrow payout released to ${o.farmerName}.`);
-          } else {
-            showToast(`📦 Order status updated to: ${newStatus}`);
-          }
-          return updated;
-        }
-        return o;
+  // Handle Farmer Confirming Dispatch (Strict Workflow: PENDING -> APPROVED -> DISPATCHED)
+  const handleConfirmDispatch = async (orderId) => {
+    const res = await dispatchPurchaseOrder(orderId);
+    if (res.success && res.order) {
+      const dispatched = normalizeOrder(res.order);
+      setOrders(prev => {
+        const next = prev.map(o => (
+          String(o.id) === String(orderId) || 
+          o.orderNumber === orderId || 
+          (dispatched && (o.orderNumber === dispatched.orderNumber || String(o.id) === String(dispatched.id)))
+        ) ? { ...o, ...dispatched, orderStatus: 'DISPATCHED' } : o);
+        saveStoredOrders(next);
+        return next;
       });
-      saveStoredOrders(next);
-      return next;
-    });
+
+      // Synchronize product state locally
+      setProducts(prev => prev.map(p => {
+        if (p.id === dispatched.productId || p.title === dispatched.productTitle) {
+          const currentAvailable = p.availableQuantityTons != null ? p.availableQuantityTons : p.quantityTons;
+          const remaining = Math.max(0, currentAvailable - (dispatched.quantityTons || 0));
+          return {
+            ...p,
+            availableQuantityTons: remaining,
+            status: remaining <= 0 ? 'SOLD' : 'AVAILABLE'
+          };
+        }
+        return p;
+      }));
+
+      showToast(`🚚 Order ${dispatched.orderNumber || orderId} confirmed as DISPATCHED! Inventory synchronized.`);
+      await refreshProducts();
+      await refreshOrders();
+      return { success: true, order: dispatched };
+    } else {
+      showToast(`⚠️ ${res.error || 'Failed to confirm dispatch. Please verify order status.'}`);
+      return { success: false, error: res.error };
+    }
+  };
+
+  // Handle Order Status Transitions (e.g. DISPATCHED, DELIVERED)
+  const handleUpdateOrderStatus = async (orderId, newStatus) => {
+    if (newStatus === 'DISPATCHED') {
+      return handleConfirmDispatch(orderId);
+    }
+    const res = await updateOrderStatus(orderId, newStatus);
+    if (res.success && res.order) {
+      const updated = normalizeOrder(res.order);
+      setOrders(prev => {
+        const next = prev.map(o => (
+          String(o.id) === String(orderId) || 
+          o.orderNumber === orderId || 
+          (updated && (o.orderNumber === updated.orderNumber || String(o.id) === String(updated.id)))
+        ) ? { ...o, ...updated } : o);
+        saveStoredOrders(next);
+        return next;
+      });
+      if (newStatus === 'DELIVERED' || newStatus === 'COMPLETED') {
+        showToast(`🚚 Delivery verified! Escrow payout released to farmer.`);
+      } else {
+        showToast(`📦 Order status updated to: ${newStatus}`);
+      }
+      await refreshOrders();
+    } else {
+      showToast(`⚠️ ${res.error || 'Failed to update order status.'}`);
+    }
   };
 
   // Handle Negotiation Offer / Inquiry
@@ -472,7 +512,10 @@ export default function App() {
             onCreateProduct={handleCreateProduct}
             onAcceptOrder={handleAcceptOrder}
             onRejectOrder={handleRejectOrder}
+            onConfirmDispatch={handleConfirmDispatch}
             onUpdateOrderStatus={handleUpdateOrderStatus}
+            onRefreshOrders={refreshOrders}
+            onRefreshProducts={refreshProducts}
             onLogout={handleLogout}
             onInspectPrice={handleInspectPrice}
             onPlaceOrder={handleBuyerPurchaseRequest}

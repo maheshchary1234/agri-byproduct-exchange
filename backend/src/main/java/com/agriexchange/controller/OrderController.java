@@ -133,6 +133,26 @@ public class OrderController {
         }
     }
 
+    @PatchMapping("/{identifier}/dispatch")
+    public ResponseEntity<?> dispatchOrder(@PathVariable String identifier, @AuthenticationPrincipal User user) {
+        if (user == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "Unauthorized: Please log in to dispatch orders."));
+        }
+        try {
+            Order updated = orderService.dispatchOrder(identifier, user);
+            return ResponseEntity.ok(updated);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(404).body(Map.of("error", ex.getMessage()));
+        } catch (SecurityException ex) {
+            return ResponseEntity.status(403).body(Map.of("error", ex.getMessage()));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+        } catch (Exception ex) {
+            log.error("Error dispatching order [{}]: {}", identifier, ex.getMessage(), ex);
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
+        }
+    }
+
     @PatchMapping("/{identifier}/status")
     public ResponseEntity<?> updateOrderStatus(
             @PathVariable String identifier,
@@ -146,12 +166,18 @@ public class OrderController {
             return ResponseEntity.badRequest().body(Map.of("error", "Missing status field"));
         }
         try {
+            if ("DISPATCHED".equalsIgnoreCase(newStatus.trim())) {
+                Order updated = orderService.dispatchOrder(identifier, user);
+                return ResponseEntity.ok(updated);
+            }
             Order updated = orderService.updateOrderStatus(identifier, newStatus.trim(), user);
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.status(404).body(Map.of("error", ex.getMessage()));
         } catch (SecurityException ex) {
             return ResponseEntity.status(403).body(Map.of("error", ex.getMessage()));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));
         } catch (Exception ex) {
             log.error("Error updating status for order [{}]: {}", identifier, ex.getMessage(), ex);
             return ResponseEntity.badRequest().body(Map.of("error", ex.getMessage()));

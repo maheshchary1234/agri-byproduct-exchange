@@ -15,6 +15,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     List<Product> findByFarmerOrderByCreatedAtDesc(User farmer);
     List<Product> findByStatus(String status);
     List<Product> findByStatusOrderByCreatedAtDesc(String status);
+    List<Product> findByStatusAndAvailableQuantityTonsGreaterThanOrderByCreatedAtDesc(String status, Double minQty);
     List<Product> findByByproductType(String byproductType);
     List<Product> findByState(String state);
 
@@ -23,7 +24,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
            "(:state IS NULL OR :state = '' OR :state = 'ALL' OR p.state = :state) AND " +
            "(:maxPrice IS NULL OR p.pricePerTon <= :maxPrice) AND " +
            "(:maxMoisture IS NULL OR p.moistureContentPercent <= :maxMoisture) AND " +
-           "(p.status = 'AVAILABLE') ORDER BY p.createdAt DESC")
+           "(p.status = 'AVAILABLE' AND p.availableQuantityTons > 0) ORDER BY p.createdAt DESC")
     List<Product> searchProducts(@Param("byproductType") String byproductType,
                                 @Param("state") String state,
                                 @Param("maxPrice") Double maxPrice,

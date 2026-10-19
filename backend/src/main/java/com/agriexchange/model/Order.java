@@ -71,6 +71,9 @@ public class Order {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt = LocalDateTime.now();
 
+    @Column(name = "dispatched_at")
+    private LocalDateTime dispatchedAt;
+
     public Order() {}
 
     @PreUpdate
@@ -137,4 +140,7 @@ public class Order {
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public LocalDateTime getDispatchedAt() { return dispatchedAt; }
+    public void setDispatchedAt(LocalDateTime dispatchedAt) { this.dispatchedAt = dispatchedAt; }
 }

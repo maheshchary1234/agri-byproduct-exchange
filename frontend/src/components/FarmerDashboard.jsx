@@ -13,6 +13,7 @@ export default function FarmerDashboard({
   onCreateProduct,
   onAcceptOrder,
   onRejectOrder,
+  onConfirmDispatch,
   onUpdateOrderStatus,
   onLogout,
   onInspectPrice,
@@ -476,10 +477,11 @@ export default function FarmerDashboard({
                             </td>
                             <td>
                               <span className={`status-badge ${statusUpper}`}>
-                                {statusUpper === 'PENDING' && '⏳ ' + t('farmer_dash.status_pending')}
-                                {statusUpper === 'APPROVED' && '✓ ' + t('farmer_dash.status_approved')}
-                                {statusUpper === 'REJECTED' && '✕ ' + t('farmer_dash.status_rejected')}
-                                {['DELIVERED', 'COMPLETED'].includes(statusUpper) && '🚚 ' + t('farmer_dash.status_completed')}
+                                {statusUpper === 'PENDING' && '⏳ ' + t('farmer_dash.status_pending', 'Pending')}
+                                {statusUpper === 'APPROVED' && '✓ ' + t('farmer_dash.status_approved', 'Approved')}
+                                {statusUpper === 'DISPATCHED' && '🚚 ' + t('farmer_dash.status_dispatched', 'Dispatched')}
+                                {statusUpper === 'REJECTED' && '✕ ' + t('farmer_dash.status_rejected', 'Rejected')}
+                                {['DELIVERED', 'COMPLETED'].includes(statusUpper) && '✅ ' + t('farmer_dash.status_completed', 'Delivered')}
                               </span>
                             </td>
                             <td>
@@ -491,7 +493,7 @@ export default function FarmerDashboard({
                                     style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}
                                     onClick={() => onAcceptOrder && onAcceptOrder(order.orderNumber || order.id)}
                                   >
-                                    ✓ {t('farmer_dash.btn_approve')}
+                                    ✓ {t('farmer_dash.btn_approve', 'Approve')}
                                   </button>
                                   <button
                                     type="button"
@@ -499,18 +501,22 @@ export default function FarmerDashboard({
                                     style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: 'var(--red-600)', borderColor: '#fca5a5' }}
                                     onClick={() => onRejectOrder && onRejectOrder(order.orderNumber || order.id)}
                                   >
-                                    ✕ {t('farmer_dash.btn_reject')}
+                                    ✕ {t('farmer_dash.btn_reject', 'Reject')}
                                   </button>
                                 </div>
                               ) : statusUpper === 'APPROVED' ? (
                                 <button
                                   type="button"
                                   className="btn-secondary"
-                                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: 'var(--green-800)', borderColor: 'var(--green-500)' }}
-                                  onClick={() => onUpdateOrderStatus && onUpdateOrderStatus(order.id, 'DELIVERED')}
+                                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: 'var(--green-800)', borderColor: 'var(--green-500)', fontWeight: 600, background: '#f0fdf4' }}
+                                  onClick={() => onConfirmDispatch ? onConfirmDispatch(order.orderNumber || order.id) : (onUpdateOrderStatus && onUpdateOrderStatus(order.id, 'DISPATCHED'))}
                                 >
                                   Confirm Dispatch 🚚
                                 </button>
+                              ) : statusUpper === 'DISPATCHED' ? (
+                                <span style={{ fontSize: '0.8rem', color: '#0369a1', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                                  🚚 In Transit (Dispatched)
+                                </span>
                               ) : (
                                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                                   Settled in Escrow
@@ -609,7 +615,7 @@ export default function FarmerDashboard({
                           </span>
                         </td>
                         <td>
-                          <span className="status-badge AVAILABLE">{p.status || 'AVAILABLE'}</span>
+                          <span className={`status-badge ${p.status || 'AVAILABLE'}`}>{p.status || 'AVAILABLE'}</span>
                         </td>
                       </tr>
                     ))}

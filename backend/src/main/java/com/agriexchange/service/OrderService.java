@@ -71,14 +71,6 @@ public class OrderService {
         order.setOrderStatus("PENDING"); // Stays pending until farmer accepts
         order.setPaymentStatus("ESCROW_HELD");
 
-        // Decrement available inventory for reservation
-        double remaining = product.getAvailableQuantityTons() - req.getQuantityTons();
-        product.setAvailableQuantityTons(remaining);
-        if (remaining <= 0) {
-            product.setStatus("SOLD");
-        }
-        productRepository.save(product);
-
         Order savedOrder = orderRepository.save(order);
 
         // Record Escrow Transaction
@@ -122,18 +114,20 @@ public class OrderService {
         if (!farmer.getRole().name().equals("ROLE_ADMIN") && !order.getFarmer().getId().equals(farmer.getId())) {
             throw new SecurityException("Unauthorized: You can only reject orders addressed to your farm.");
         }
-        if (!"PENDING".equalsIgnoreCase(order.getOrderStatus())) {
-            throw new IllegalStateException("Invalid status transition: Order is not PENDING (current status: " + order.getOrderStatus() + ")");
+        if (!"PENDING".equalsIgnoreCase(order.getOrderStatus()) && !"APPROVED".equalsIgnoreCase(order.getOrderStatus())) {
+            throw new IllegalStateException("Invalid status transition: Only PENDING or APPROVED orders can be rejected (current status: " + order.getOrderStatus() + ")");
         }
         order.setOrderStatus("REJECTED");
         order.setPaymentStatus("REFUNDED");
 
-        // Restore inventory
-        Product p = order.getProduct();
-        if (p != null) {
-            p.setAvailableQuantityTons(p.getAvailableQuantityTons() + order.getQuantityTons());
-            p.setStatus("AVAILABLE");
-            productRepository.save(p);
+        // If order was already dispatched, restore inventory
+        if ("DISPATCHED".equalsIgnoreCase(order.getOrderStatus())) {
+            Product p = order.getProduct();
+            if (p != null) {
+                p.setAvailableQuantityTons(p.getAvailableQuantityTons() + order.getQuantityTons());
+                p.setStatus("AVAILABLE");
+                productRepository.save(p);
+            }
         }
         return orderRepository.save(order);
     }
@@ -141,6 +135,57 @@ public class OrderService {
     @Transactional
     public Order rejectOrder(Long orderId, User farmer) {
         return rejectOrder(String.valueOf(orderId), farmer);
+    }
+
+    @Transactional
+    public Order dispatchOrder(String identifier, User farmer) {
+        Order order = getOrderByIdOrNumber(identifier);
+
+        // 1. Authorization: Only the farmer who owns the order AND product (or Admin) can dispatch
+        if (!farmer.getRole().name().equals("ROLE_ADMIN") && !order.getFarmer().getId().equals(farmer.getId())) {
+            throw new SecurityException("Unauthorized: You can only dispatch orders addressed to your farm.");
+        }
+        if (order.getProduct() != null && order.getProduct().getFarmer() != null &&
+            !farmer.getRole().name().equals("ROLE_ADMIN") && !order.getProduct().getFarmer().getId().equals(farmer.getId())) {
+            throw new SecurityException("Unauthorized: You do not own the product associated with this order.");
+        }
+
+        // 2. Prevent duplicate dispatch and validate status transition
+        String currentStatus = (order.getOrderStatus() != null ? order.getOrderStatus() : "").toUpperCase();
+        if ("DISPATCHED".equalsIgnoreCase(currentStatus)) {
+            throw new IllegalStateException("Duplicate dispatch rejected: Order " + (order.getOrderNumber() != null ? order.getOrderNumber() : order.getId()) + " is already dispatched.");
+        }
+        if (!"APPROVED".equalsIgnoreCase(currentStatus) && !"CONFIRMED".equalsIgnoreCase(currentStatus)) {
+            throw new IllegalStateException("Invalid status transition: Only APPROVED orders can be dispatched. Current status is " + currentStatus + ".");
+        }
+
+        // 3. Mark as DISPATCHED and record dispatch timestamp
+        order.setOrderStatus("DISPATCHED");
+        order.setDispatchedAt(java.time.LocalDateTime.now());
+
+        // 4. Synchronize product inventory & marketplace availability transactionally
+        Product product = order.getProduct();
+        if (product != null) {
+            double currentAvailable = product.getAvailableQuantityTons() != null ? product.getAvailableQuantityTons() : 0.0;
+            if (currentAvailable < order.getQuantityTons()) {
+                throw new IllegalStateException("Cannot dispatch: Insufficient inventory remaining (" + currentAvailable + " MT available, order requires " + order.getQuantityTons() + " MT).");
+            }
+            double remaining = Math.max(0.0, Math.round((currentAvailable - order.getQuantityTons()) * 100.0) / 100.0);
+            product.setAvailableQuantityTons(remaining);
+            if (remaining <= 0.0) {
+                product.setStatus("SOLD");
+            } else {
+                product.setStatus("AVAILABLE");
+            }
+            productRepository.save(product);
+        }
+
+        return orderRepository.save(order);
+    }
+
+    @Transactional
+    public Order dispatchOrder(Long orderId, User farmer) {
+        return dispatchOrder(String.valueOf(orderId), farmer);
     }
 
     public List<Order> getFarmerSalesHistory(User farmer) {
@@ -315,6 +360,7 @@ public class OrderService {
             throw new SecurityException("Unauthorized: You can only update orders associated with your account.");
         }
 
+        String previousStatus = order.getOrderStatus() != null ? order.getOrderStatus() : "";
         order.setOrderStatus(newStatus);
 
         // When delivered or completed, release escrow funds to farmer
@@ -322,12 +368,14 @@ public class OrderService {
             order.setPaymentStatus("RELEASED_TO_FARMER");
         } else if ("CANCELLED".equalsIgnoreCase(newStatus) || "REJECTED".equalsIgnoreCase(newStatus)) {
             order.setPaymentStatus("REFUNDED");
-            // Restore inventory
-            Product p = order.getProduct();
-            if (p != null) {
-                p.setAvailableQuantityTons(p.getAvailableQuantityTons() + order.getQuantityTons());
-                p.setStatus("AVAILABLE");
-                productRepository.save(p);
+            // Restore inventory only if it was already dispatched
+            if ("DISPATCHED".equalsIgnoreCase(previousStatus)) {
+                Product p = order.getProduct();
+                if (p != null) {
+                    p.setAvailableQuantityTons(p.getAvailableQuantityTons() + order.getQuantityTons());
+                    p.setStatus("AVAILABLE");
+                    productRepository.save(p);
+                }
             }
         }
 

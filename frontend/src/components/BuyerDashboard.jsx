@@ -48,6 +48,7 @@ export default function BuyerDashboard({
     if (res.success && res.order) {
       setActiveStatusOrder(res.order);
       setStatusError(null);
+      if (onRefreshOrders) onRefreshOrders();
     } else {
       setActiveStatusOrder(null);
       if (res.notFound) {
@@ -101,13 +102,16 @@ export default function BuyerDashboard({
 
   // Proximity-matched agricultural by-products (nearby supply lots)
   const proximityMatchedProducts = useMemo(() => {
-    return products.slice(0, 4).map((p, index) => {
-      const distances = [28, 45, 82, 115];
-      return {
-        ...p,
-        distanceKm: distances[index % distances.length]
-      };
-    });
+    return products
+      .filter(p => (!p.status || p.status === 'AVAILABLE') && (p.availableQuantityTons == null || Number(p.availableQuantityTons) > 0))
+      .slice(0, 4)
+      .map((p, index) => {
+        const distances = [28, 45, 82, 115];
+        return {
+          ...p,
+          distanceKm: distances[index % distances.length]
+        };
+      });
   }, [products]);
 
   const handleOpenOrderModal = (product) => {
@@ -461,13 +465,15 @@ export default function BuyerDashboard({
                   <table className="clean-table">
                     <thead>
                       <tr>
-                        <th>{t('buyer_dash.col_order_no')}</th>
-                        <th>{t('buyer_dash.col_byproduct')}</th>
-                        <th>{t('buyer_dash.col_farmer')}</th>
-                        <th>{t('buyer_dash.col_qty')}</th>
-                        <th>{t('buyer_dash.col_total_cost')}</th>
-                        <th>{t('buyer_dash.col_status')}</th>
-                        <th>{t('buyer_dash.col_actions')}</th>
+                        <th>{t('buyer_dash.col_order_no', 'Order ID')}</th>
+                        <th>{t('buyer_dash.col_byproduct', 'Product')}</th>
+                        <th>{t('buyer_dash.col_farmer', 'Farmer')}</th>
+                        <th>{t('buyer_dash.col_qty', 'Quantity')}</th>
+                        <th>{t('buyer_dash.col_total_cost', 'Total Cost')}</th>
+                        <th>Payment Status</th>
+                        <th>Dispatch Date</th>
+                        <th>{t('buyer_dash.col_status', 'Status')}</th>
+                        <th>{t('buyer_dash.col_actions', 'Actions')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -494,11 +500,33 @@ export default function BuyerDashboard({
                               </strong>
                             </td>
                             <td>
+                              <span style={{
+                                fontSize: '0.74rem',
+                                fontWeight: 700,
+                                padding: '0.2rem 0.55rem',
+                                borderRadius: '4px',
+                                display: 'inline-block',
+                                background: order.paymentStatus === 'RELEASED_TO_FARMER' ? '#dcfce7' : order.paymentStatus === 'REFUNDED' ? '#fee2e2' : '#e0f2fe',
+                                color: order.paymentStatus === 'RELEASED_TO_FARMER' ? '#15803d' : order.paymentStatus === 'REFUNDED' ? '#dc2626' : '#0369a1',
+                                border: `1px solid ${order.paymentStatus === 'RELEASED_TO_FARMER' ? '#86efac' : order.paymentStatus === 'REFUNDED' ? '#fecaca' : '#bae6fd'}`
+                              }}>
+                                {order.paymentStatus === 'RELEASED_TO_FARMER' ? '✓ RELEASED' : (order.paymentStatus === 'REFUNDED' ? '✕ REFUNDED' : '🔒 ESCROW HELD')}
+                              </span>
+                            </td>
+                            <td>
+                              <span style={{ fontSize: '0.8rem', color: statusUpper === 'DISPATCHED' ? '#0369a1' : 'var(--text-muted)', fontWeight: statusUpper === 'DISPATCHED' ? 700 : 500 }}>
+                                {order.dispatchedAt 
+                                  ? new Date(order.dispatchedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+                                  : (statusUpper === 'DISPATCHED' ? 'Today' : '—')}
+                              </span>
+                            </td>
+                            <td>
                               <span className={`status-badge ${statusUpper}`}>
-                                {statusUpper === 'PENDING' && '⏳ ' + t('farmer_dash.status_pending')}
-                                {statusUpper === 'APPROVED' && '✓ ' + t('farmer_dash.status_approved')}
-                                {statusUpper === 'REJECTED' && '✕ ' + t('farmer_dash.status_rejected')}
-                                {['DELIVERED', 'COMPLETED'].includes(statusUpper) && '🚚 ' + t('farmer_dash.status_completed')}
+                                {statusUpper === 'PENDING' && '⏳ ' + t('farmer_dash.status_pending', 'Pending')}
+                                {statusUpper === 'APPROVED' && '✓ ' + t('farmer_dash.status_approved', 'Approved')}
+                                {statusUpper === 'DISPATCHED' && '🚚 ' + t('farmer_dash.status_dispatched', 'Dispatched')}
+                                {statusUpper === 'REJECTED' && '✕ ' + t('farmer_dash.status_rejected', 'Rejected')}
+                                {['DELIVERED', 'COMPLETED'].includes(statusUpper) && '✅ ' + t('farmer_dash.status_completed', 'Delivered')}
                               </span>
                             </td>
                             <td>
@@ -757,8 +785,9 @@ export default function BuyerDashboard({
                   <span className={`status-badge ${(activeStatusOrder.orderStatus || 'PENDING').toUpperCase()}`} style={{ fontSize: '0.85rem', padding: '0.4rem 0.9rem' }}>
                     {activeStatusOrder.orderStatus === 'PENDING' && '⏳ PENDING APPROVAL'}
                     {activeStatusOrder.orderStatus === 'APPROVED' && '✓ ACCEPTED BY FARMER'}
+                    {activeStatusOrder.orderStatus === 'DISPATCHED' && '🚚 DISPATCHED (IN TRANSIT)'}
                     {activeStatusOrder.orderStatus === 'REJECTED' && '✕ REJECTED'}
-                    {['DELIVERED', 'COMPLETED'].includes(activeStatusOrder.orderStatus) && '🚚 DELIVERED & SETTLED'}
+                    {['DELIVERED', 'COMPLETED'].includes(activeStatusOrder.orderStatus) && '✅ DELIVERED & SETTLED'}
                   </span>
                 </div>
 
@@ -787,9 +816,9 @@ export default function BuyerDashboard({
                       background: ['DELIVERED', 'COMPLETED', 'DISPATCHED'].includes(activeStatusOrder.orderStatus) ? '#dcfce7' : '#f1f5f9',
                       color: ['DELIVERED', 'COMPLETED', 'DISPATCHED'].includes(activeStatusOrder.orderStatus) ? '#166534' : '#64748b',
                       fontSize: '0.74rem', 
-                      fontWeight: 600 
+                      fontWeight: 700 
                     }}>
-                      3. Dispatch
+                      {activeStatusOrder.orderStatus === 'DISPATCHED' ? '3. Dispatched 🚚' : ['DELIVERED', 'COMPLETED'].includes(activeStatusOrder.orderStatus) ? '3. Dispatched ✓' : '3. Dispatch'}
                     </div>
                     <div style={{ 
                       padding: '0.4rem', 

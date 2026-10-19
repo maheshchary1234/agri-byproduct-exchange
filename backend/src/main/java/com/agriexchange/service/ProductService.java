@@ -24,7 +24,7 @@ public class ProductService {
     }
 
     public List<Product> getAllActiveProducts() {
-        return productRepository.findByStatusOrderByCreatedAtDesc("AVAILABLE");
+        return productRepository.findByStatusAndAvailableQuantityTonsGreaterThanOrderByCreatedAtDesc("AVAILABLE", 0.0);
     }
 
     public List<Product> searchProducts(String byproductType, String state, Double maxPrice, Double maxMoisture) {

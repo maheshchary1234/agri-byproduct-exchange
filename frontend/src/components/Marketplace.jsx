@@ -38,6 +38,14 @@ export default function Marketplace({
 
   // Filtering Logic
   const filteredProducts = products.filter(p => {
+    // 0. Availability & Inventory Stock synchronization:
+    // Dispatched/sold products with zero available stock must be excluded from marketplace
+    const isStatusAvailable = !p.status || p.status === 'AVAILABLE';
+    const remainingQty = p.availableQuantityTons != null ? Number(p.availableQuantityTons) : (p.quantityTons != null ? Number(p.quantityTons) : 0);
+    if (!isStatusAvailable || remainingQty <= 0) {
+      return false;
+    }
+
     // 1. Search by name
     if (searchName.trim()) {
       const q = searchName.toLowerCase();

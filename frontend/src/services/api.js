@@ -1477,6 +1477,115 @@ export async function rejectPurchaseOrder(orderId, reason = 'Inventory committed
 }
 
 /**
+ * Farmer confirms dispatch of an order
+ * Calls PATCH /api/orders/{id}/dispatch
+ * Backend validates status is APPROVED, enforces ownership, prevents duplicate dispatch,
+ * sets status to DISPATCHED, and decrements available product inventory transactionally.
+ */
+export async function dispatchPurchaseOrder(orderId) {
+  try {
+    const encodedId = encodeURIComponent(String(orderId).trim());
+    let res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/dispatch`, {
+      method: 'PATCH'
+    });
+
+    // Auto-refresh token if 401/403
+    if (!res.ok && (res.status === 401 || res.status === 403)) {
+      const freshToken = await autoRefreshAuthToken('Farmer');
+      if (freshToken) {
+        res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/dispatch`, {
+          method: 'PATCH'
+        });
+      }
+    }
+
+    if (res.ok) {
+      const data = await res.json();
+      const norm = normalizeOrder(data);
+      const allOrders = getStoredOrders().map(o => (o.id === norm.id || o.orderNumber === norm.orderNumber) ? norm : o);
+      saveStoredOrders(allOrders);
+      return { success: true, order: norm };
+    }
+
+    const errData = await res.json().catch(() => ({}));
+    return {
+      success: false,
+      error: errData.error || `Failed to confirm dispatch (Status ${res.status})`
+    };
+  } catch (err) {
+    console.warn('Backend dispatch order offline, using client store:', err);
+  }
+
+  // Resilient fallback for demo/offline mode
+  const allOrders = getStoredOrders();
+  const target = allOrders.find(o => String(o.id) === String(orderId) || o.orderNumber === orderId);
+  if (!target) {
+    return { success: false, error: `Order "${orderId}" not found.` };
+  }
+  const currentStatus = (target.orderStatus || '').toUpperCase();
+  if (currentStatus === 'DISPATCHED') {
+    return { success: false, error: `Duplicate dispatch rejected: Order ${target.orderNumber || target.id} is already dispatched.` };
+  }
+  if (currentStatus !== 'APPROVED' && currentStatus !== 'CONFIRMED') {
+    return { success: false, error: `Invalid status transition: Only APPROVED orders can be dispatched. Current status is ${currentStatus}.` };
+  }
+
+  const updatedTarget = {
+    ...target,
+    orderStatus: 'DISPATCHED',
+    dispatchedAt: new Date().toISOString()
+  };
+
+  const updated = allOrders.map(o => (String(o.id) === String(orderId) || o.orderNumber === orderId) ? updatedTarget : o);
+  saveStoredOrders(updated);
+
+  // Synchronize product quantity in local fallback
+  const prodIndex = INITIAL_PRODUCTS.findIndex(p => p.id === target.productId || p.title === target.productTitle);
+  if (prodIndex >= 0) {
+    const prod = INITIAL_PRODUCTS[prodIndex];
+    const currQty = prod.availableQuantityTons != null ? prod.availableQuantityTons : prod.quantityTons;
+    const remaining = Math.max(0, currQty - (target.quantityTons || 0));
+    INITIAL_PRODUCTS[prodIndex] = {
+      ...prod,
+      availableQuantityTons: remaining,
+      status: remaining <= 0 ? 'SOLD' : 'AVAILABLE'
+    };
+  }
+
+  return { success: true, order: updatedTarget, isLocal: true };
+}
+
+/**
+ * Update order status generic helper
+ */
+export async function updateOrderStatus(orderId, newStatus) {
+  try {
+    const encodedId = encodeURIComponent(String(orderId).trim());
+    let res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const norm = normalizeOrder(data);
+      const allOrders = getStoredOrders().map(o => (o.id === norm.id || o.orderNumber === norm.orderNumber) ? norm : o);
+      saveStoredOrders(allOrders);
+      return { success: true, order: norm };
+    }
+    const errData = await res.json().catch(() => ({}));
+    return { success: false, error: errData.error || `Failed to update order status` };
+  } catch (err) {
+    console.warn('Backend update status offline, using local store:', err);
+  }
+
+  const allOrders = getStoredOrders();
+  const updated = allOrders.map(o => (String(o.id) === String(orderId) || o.orderNumber === orderId) ? { ...o, orderStatus: newStatus } : o);
+  saveStoredOrders(updated);
+  return { success: true, order: updated.find(o => String(o.id) === String(orderId) || o.orderNumber === orderId), isLocal: true };
+}
+
+/**
  * Fetch sales history for authenticated farmer
  */
 export async function fetchFarmerSalesHistory(farmerUser) {
