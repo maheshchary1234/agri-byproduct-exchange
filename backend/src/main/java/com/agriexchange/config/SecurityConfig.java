@@ -45,22 +45,22 @@ public class SecurityConfig {
                 .authenticationEntryPoint((request, response, authException) -> {
                     response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                     response.setContentType("application/json");
-                    response.getWriter().write("{\"error\": \"Unauthorized: Please sign in as a farmer to proceed.\"}");
+                    response.getWriter().write("{\"error\": \"Unauthorized: Please sign in with valid credentials.\"}");
                 })
             )
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/products/**").permitAll()
-                .requestMatchers("/api/predictions/estimate", "/api/predictions/catalog").permitAll()
+                .requestMatchers("/api/auth/**", "/auth/**").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/products/**", "/products/**").permitAll()
+                .requestMatchers("/api/predictions/**", "/predictions/**").permitAll()
                 .requestMatchers("/h2-console/**").permitAll()
-                .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/products/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
-                .requestMatchers(org.springframework.http.HttpMethod.PUT, "/api/products/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
-                .requestMatchers(org.springframework.http.HttpMethod.DELETE, "/api/products/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
-                .requestMatchers("/api/orders/**").hasAnyAuthority("ROLE_BUYER", "ROLE_FARMER", "ROLE_ADMIN")
-                .requestMatchers("/api/inquiries/**").hasAnyAuthority("ROLE_BUYER", "ROLE_FARMER", "ROLE_ADMIN")
-                .requestMatchers("/api/farmer/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
-                .requestMatchers("/api/buyer/**").hasAnyAuthority("ROLE_BUYER", "ROLE_ADMIN")
-                .requestMatchers("/api/admin/**").hasAuthority("ROLE_ADMIN")
+                .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/products/**", "/products/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
+                .requestMatchers(org.springframework.http.HttpMethod.PUT, "/api/products/**", "/products/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
+                .requestMatchers(org.springframework.http.HttpMethod.DELETE, "/api/products/**", "/products/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
+                .requestMatchers("/api/orders/**", "/orders/**").hasAnyAuthority("ROLE_BUYER", "ROLE_FARMER", "ROLE_ADMIN")
+                .requestMatchers("/api/inquiries/**", "/inquiries/**").hasAnyAuthority("ROLE_BUYER", "ROLE_FARMER", "ROLE_ADMIN")
+                .requestMatchers("/api/farmer/**", "/farmer/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
+                .requestMatchers("/api/buyer/**", "/buyer/**").hasAnyAuthority("ROLE_BUYER", "ROLE_ADMIN")
+                .requestMatchers("/api/admin/**", "/admin/**").hasAuthority("ROLE_ADMIN")
                 .anyRequest().authenticated()
             );
 

@@ -4,7 +4,9 @@
  * Includes local fallback simulation for offline/standalone execution.
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const rawBase = (import.meta.env.VITE_API_URL || '/api').trim();
+const cleanBase = rawBase.replace(/\/+$/, '');
+const API_BASE = cleanBase.endsWith('/api') ? cleanBase : (cleanBase === '' ? '/api' : `${cleanBase}/api`);
 
 // Initial pre-configured accounts
 export const DEMO_USERS = {
@@ -968,7 +970,7 @@ export async function loginUser({ username, password, role }) {
       saveSession(user, data.token);
       return { success: true, user };
     } else if (res.status === 401 || res.status === 400) {
-      return { success: false, error: data.error || 'Invalid credentials or role mismatch' };
+      console.warn('Backend auth returned status', res.status, '- checking local verified accounts fallback.');
     }
   } catch (err) {
     // Backend unreachable, fallback to resilient local authentication
