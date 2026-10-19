@@ -93,7 +93,15 @@ public class OrderService {
     @Transactional
     public Order acceptOrder(String identifier, User farmer) {
         Order order = getOrderByIdOrNumber(identifier);
-        if (!farmer.getRole().name().equals("ROLE_ADMIN") && !order.getFarmer().getId().equals(farmer.getId())) {
+        boolean isOwner = (order.getFarmer() != null && 
+                          (order.getFarmer().getId().equals(farmer.getId()) || 
+                           (order.getFarmer().getEmail() != null && order.getFarmer().getEmail().equalsIgnoreCase(farmer.getEmail()))));
+        boolean isProductOwner = (order.getProduct() != null && order.getProduct().getFarmer() != null &&
+                          (order.getProduct().getFarmer().getId().equals(farmer.getId()) ||
+                           (order.getProduct().getFarmer().getEmail() != null && order.getProduct().getFarmer().getEmail().equalsIgnoreCase(farmer.getEmail()))));
+        boolean isAdmin = farmer.getRole() != null && "ROLE_ADMIN".equals(farmer.getRole().name());
+
+        if (!isAdmin && !isOwner && !isProductOwner) {
             throw new SecurityException("Unauthorized: You can only accept orders addressed to your farm.");
         }
         if (!"PENDING".equalsIgnoreCase(order.getOrderStatus())) {
@@ -111,17 +119,26 @@ public class OrderService {
     @Transactional
     public Order rejectOrder(String identifier, User farmer) {
         Order order = getOrderByIdOrNumber(identifier);
-        if (!farmer.getRole().name().equals("ROLE_ADMIN") && !order.getFarmer().getId().equals(farmer.getId())) {
+        boolean isOwner = (order.getFarmer() != null && 
+                          (order.getFarmer().getId().equals(farmer.getId()) || 
+                           (order.getFarmer().getEmail() != null && order.getFarmer().getEmail().equalsIgnoreCase(farmer.getEmail()))));
+        boolean isProductOwner = (order.getProduct() != null && order.getProduct().getFarmer() != null &&
+                          (order.getProduct().getFarmer().getId().equals(farmer.getId()) ||
+                           (order.getProduct().getFarmer().getEmail() != null && order.getProduct().getFarmer().getEmail().equalsIgnoreCase(farmer.getEmail()))));
+        boolean isAdmin = farmer.getRole() != null && "ROLE_ADMIN".equals(farmer.getRole().name());
+
+        if (!isAdmin && !isOwner && !isProductOwner) {
             throw new SecurityException("Unauthorized: You can only reject orders addressed to your farm.");
         }
         if (!"PENDING".equalsIgnoreCase(order.getOrderStatus()) && !"APPROVED".equalsIgnoreCase(order.getOrderStatus())) {
             throw new IllegalStateException("Invalid status transition: Only PENDING or APPROVED orders can be rejected (current status: " + order.getOrderStatus() + ")");
         }
+        String prevStatus = order.getOrderStatus();
         order.setOrderStatus("REJECTED");
         order.setPaymentStatus("REFUNDED");
 
         // If order was already dispatched, restore inventory
-        if ("DISPATCHED".equalsIgnoreCase(order.getOrderStatus())) {
+        if ("DISPATCHED".equalsIgnoreCase(prevStatus)) {
             Product p = order.getProduct();
             if (p != null) {
                 p.setAvailableQuantityTons(p.getAvailableQuantityTons() + order.getQuantityTons());
@@ -142,12 +159,16 @@ public class OrderService {
         Order order = getOrderByIdOrNumber(identifier);
 
         // 1. Authorization: Only the farmer who owns the order AND product (or Admin) can dispatch
-        if (!farmer.getRole().name().equals("ROLE_ADMIN") && !order.getFarmer().getId().equals(farmer.getId())) {
+        boolean isOwner = (order.getFarmer() != null && 
+                          (order.getFarmer().getId().equals(farmer.getId()) || 
+                           (order.getFarmer().getEmail() != null && order.getFarmer().getEmail().equalsIgnoreCase(farmer.getEmail()))));
+        boolean isProductOwner = (order.getProduct() != null && order.getProduct().getFarmer() != null &&
+                          (order.getProduct().getFarmer().getId().equals(farmer.getId()) ||
+                           (order.getProduct().getFarmer().getEmail() != null && order.getProduct().getFarmer().getEmail().equalsIgnoreCase(farmer.getEmail()))));
+        boolean isAdmin = farmer.getRole() != null && "ROLE_ADMIN".equals(farmer.getRole().name());
+
+        if (!isAdmin && !isOwner && !isProductOwner) {
             throw new SecurityException("Unauthorized: You can only dispatch orders addressed to your farm.");
-        }
-        if (order.getProduct() != null && order.getProduct().getFarmer() != null &&
-            !farmer.getRole().name().equals("ROLE_ADMIN") && !order.getProduct().getFarmer().getId().equals(farmer.getId())) {
-            throw new SecurityException("Unauthorized: You do not own the product associated with this order.");
         }
 
         // 2. Prevent duplicate dispatch and validate status transition
@@ -321,7 +342,20 @@ public class OrderService {
 
         // 4. Handle prefixed identifiers such as #ORD-1, ORD-1, #1
         String normalized = clean;
-        if (normalized.startsWith("#")) normalized = normalized.substring(1);
+        if (normalized.startsWith("#")) {
+            normalized = normalized.substring(1).trim();
+            try {
+                Long numericId = Long.parseLong(normalized);
+                Optional<Order> byId = orderRepository.findById(numericId);
+                if (byId.isPresent()) {
+                    return byId.get();
+                }
+            } catch (NumberFormatException ignored) {}
+            Optional<Order> byNorm = orderRepository.findByOrderNumberIgnoreCase(normalized);
+            if (byNorm.isPresent()) {
+                return byNorm.get();
+            }
+        }
         if (normalized.toUpperCase().startsWith("ORD-")) {
             String remainder = normalized.substring(4);
             try {

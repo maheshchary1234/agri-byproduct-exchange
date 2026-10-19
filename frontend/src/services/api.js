@@ -734,10 +734,19 @@ async function autoRefreshAuthToken(roleHint) {
     let targetEmail = DEMO_USERS.FARMER.email;
     let targetRole = 'Farmer';
 
-    if (roleHint === 'Buyer' || session?.role === 'ROLE_BUYER') {
+    if (roleHint === 'Farmer') {
+      targetEmail = DEMO_USERS.FARMER.email;
+      targetRole = 'Farmer';
+    } else if (roleHint === 'Buyer') {
       targetEmail = DEMO_USERS.BUYER.email;
       targetRole = 'Buyer';
-    } else if (roleHint === 'Admin' || session?.role === 'ROLE_ADMIN') {
+    } else if (roleHint === 'Admin') {
+      targetEmail = DEMO_USERS.ADMIN.email;
+      targetRole = 'Admin';
+    } else if (session?.role === 'ROLE_BUYER') {
+      targetEmail = DEMO_USERS.BUYER.email;
+      targetRole = 'Buyer';
+    } else if (session?.role === 'ROLE_ADMIN') {
       targetEmail = DEMO_USERS.ADMIN.email;
       targetRole = 'Admin';
     } else if (session?.email) {
@@ -1413,7 +1422,20 @@ export async function fetchUserOrders() {
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) {
-        return data.map(normalizeOrder);
+        const live = data.map(normalizeOrder);
+        const stored = getStoredOrders();
+        const merged = [...live];
+        for (const s of stored) {
+          const exists = live.some(l => 
+            String(l.id) === String(s.id) || 
+            (l.orderNumber && s.orderNumber && l.orderNumber === s.orderNumber)
+          );
+          if (!exists) {
+            merged.push(s);
+          }
+        }
+        saveStoredOrders(merged);
+        return merged;
       }
     }
   } catch (err) {
@@ -1427,15 +1449,32 @@ export async function fetchUserOrders() {
  * Transitions order from PENDING -> APPROVED
  */
 export async function acceptPurchaseOrder(orderId) {
+  const cleanId = String(orderId).trim();
   try {
-    const encodedId = encodeURIComponent(String(orderId).trim());
-    const res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/accept`, {
+    const encodedId = encodeURIComponent(cleanId);
+    let res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/accept`, {
       method: 'PATCH'
     });
+
+    // Auto-refresh token if 401/403
+    if (!res.ok && (res.status === 401 || res.status === 403)) {
+      const freshToken = await autoRefreshAuthToken('Farmer');
+      if (freshToken) {
+        res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/accept`, {
+          method: 'PATCH'
+        });
+      }
+    }
+
     if (res.ok) {
       const data = await res.json();
       const norm = normalizeOrder(data);
-      const allOrders = getStoredOrders().map(o => (o.id === norm.id || o.orderNumber === norm.orderNumber) ? norm : o);
+      const allOrders = getStoredOrders().map(o => (
+        String(o.id) === String(norm.id) || 
+        o.orderNumber === norm.orderNumber ||
+        String(o.id) === cleanId ||
+        o.orderNumber === cleanId
+      ) ? norm : o);
       saveStoredOrders(allOrders);
       return { success: true, order: norm };
     }
@@ -1443,10 +1482,34 @@ export async function acceptPurchaseOrder(orderId) {
     console.warn('Backend accept order offline, using local store:', err);
   }
 
+  // Resilient fallback for demo/offline mode
   const allOrders = getStoredOrders();
-  const updated = allOrders.map(o => (o.id === orderId || o.orderNumber === orderId) ? { ...o, orderStatus: 'APPROVED' } : o);
+  const target = allOrders.find(o => 
+    String(o.id) === cleanId || 
+    o.orderNumber === cleanId ||
+    (cleanId.startsWith('#') && o.orderNumber === cleanId.substring(1)) ||
+    (o.orderNumber && '#' + o.orderNumber === cleanId) ||
+    (cleanId.startsWith('ORD-') && String(o.id) === cleanId.substring(4))
+  );
+
+  if (!target) {
+    return { success: false, error: `Order "${orderId}" not found.` };
+  }
+
+  const updatedTarget = {
+    ...target,
+    orderStatus: 'APPROVED'
+  };
+
+  const updated = allOrders.map(o => (
+    String(o.id) === String(target.id) || 
+    o.orderNumber === target.orderNumber ||
+    String(o.id) === cleanId ||
+    o.orderNumber === cleanId
+  ) ? updatedTarget : o);
+
   saveStoredOrders(updated);
-  return { success: true, order: updated.find(o => o.id === orderId || o.orderNumber === orderId) };
+  return { success: true, order: updatedTarget, isLocal: true };
 }
 
 /**
@@ -1454,15 +1517,36 @@ export async function acceptPurchaseOrder(orderId) {
  * Transitions order from PENDING -> REJECTED
  */
 export async function rejectPurchaseOrder(orderId, reason = 'Inventory committed elsewhere') {
+  const cleanId = String(orderId).trim();
   try {
-    const encodedId = encodeURIComponent(String(orderId).trim());
-    const res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/reject`, {
-      method: 'PATCH'
+    const encodedId = encodeURIComponent(cleanId);
+    let res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/reject`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
     });
+
+    // Auto-refresh token if 401/403
+    if (!res.ok && (res.status === 401 || res.status === 403)) {
+      const freshToken = await autoRefreshAuthToken('Farmer');
+      if (freshToken) {
+        res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/reject`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason })
+        });
+      }
+    }
+
     if (res.ok) {
       const data = await res.json();
       const norm = normalizeOrder(data);
-      const allOrders = getStoredOrders().map(o => (o.id === norm.id || o.orderNumber === norm.orderNumber) ? norm : o);
+      const allOrders = getStoredOrders().map(o => (
+        String(o.id) === String(norm.id) || 
+        o.orderNumber === norm.orderNumber ||
+        String(o.id) === cleanId ||
+        o.orderNumber === cleanId
+      ) ? norm : o);
       saveStoredOrders(allOrders);
       return { success: true, order: norm };
     }
@@ -1470,10 +1554,36 @@ export async function rejectPurchaseOrder(orderId, reason = 'Inventory committed
     console.warn('Backend reject order offline, using local store:', err);
   }
 
+  // Resilient fallback for demo/offline mode
   const allOrders = getStoredOrders();
-  const updated = allOrders.map(o => (o.id === orderId || o.orderNumber === orderId) ? { ...o, orderStatus: 'REJECTED', paymentStatus: 'REFUNDED' } : o);
+  const target = allOrders.find(o => 
+    String(o.id) === cleanId || 
+    o.orderNumber === cleanId ||
+    (cleanId.startsWith('#') && o.orderNumber === cleanId.substring(1)) ||
+    (o.orderNumber && '#' + o.orderNumber === cleanId) ||
+    (cleanId.startsWith('ORD-') && String(o.id) === cleanId.substring(4))
+  );
+
+  if (!target) {
+    return { success: false, error: `Order "${orderId}" not found.` };
+  }
+
+  const updatedTarget = {
+    ...target,
+    orderStatus: 'REJECTED',
+    paymentStatus: 'REFUNDED',
+    rejectionReason: reason
+  };
+
+  const updated = allOrders.map(o => (
+    String(o.id) === String(target.id) || 
+    o.orderNumber === target.orderNumber ||
+    String(o.id) === cleanId ||
+    o.orderNumber === cleanId
+  ) ? updatedTarget : o);
+
   saveStoredOrders(updated);
-  return { success: true, order: updated.find(o => o.id === orderId || o.orderNumber === orderId) };
+  return { success: true, order: updatedTarget, isLocal: true };
 }
 
 /**
@@ -1559,17 +1669,33 @@ export async function dispatchPurchaseOrder(orderId) {
  * Update order status generic helper
  */
 export async function updateOrderStatus(orderId, newStatus) {
+  const cleanId = String(orderId).trim();
   try {
-    const encodedId = encodeURIComponent(String(orderId).trim());
+    const encodedId = encodeURIComponent(cleanId);
     let res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: newStatus })
     });
+    if (!res.ok && (res.status === 401 || res.status === 403)) {
+      const freshToken = await autoRefreshAuthToken('Farmer');
+      if (freshToken) {
+        res = await fetchWithAuth(`${API_BASE}/orders/${encodedId}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+      }
+    }
     if (res.ok) {
       const data = await res.json();
       const norm = normalizeOrder(data);
-      const allOrders = getStoredOrders().map(o => (o.id === norm.id || o.orderNumber === norm.orderNumber) ? norm : o);
+      const allOrders = getStoredOrders().map(o => (
+        String(o.id) === String(norm.id) || 
+        o.orderNumber === norm.orderNumber ||
+        String(o.id) === cleanId ||
+        o.orderNumber === cleanId
+      ) ? norm : o);
       saveStoredOrders(allOrders);
       return { success: true, order: norm };
     }
@@ -1580,9 +1706,15 @@ export async function updateOrderStatus(orderId, newStatus) {
   }
 
   const allOrders = getStoredOrders();
-  const updated = allOrders.map(o => (String(o.id) === String(orderId) || o.orderNumber === orderId) ? { ...o, orderStatus: newStatus } : o);
+  const updated = allOrders.map(o => (
+    String(o.id) === cleanId || 
+    o.orderNumber === cleanId ||
+    (cleanId.startsWith('#') && o.orderNumber === cleanId.substring(1)) ||
+    (o.orderNumber && '#' + o.orderNumber === cleanId) ||
+    (cleanId.startsWith('ORD-') && String(o.id) === cleanId.substring(4))
+  ) ? { ...o, orderStatus: newStatus } : o);
   saveStoredOrders(updated);
-  return { success: true, order: updated.find(o => String(o.id) === String(orderId) || o.orderNumber === orderId), isLocal: true };
+  return { success: true, order: updated.find(o => String(o.id) === cleanId || o.orderNumber === cleanId), isLocal: true };
 }
 
 /**

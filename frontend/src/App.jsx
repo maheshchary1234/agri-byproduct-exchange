@@ -260,14 +260,17 @@ export default function App() {
 
   // Handle Farmer Accepting Order (Transitions PENDING -> APPROVED)
   const handleAcceptOrder = async (orderId) => {
+    const cleanId = String(orderId).trim();
     const res = await acceptPurchaseOrder(orderId);
     if (res.success && res.order) {
       const accepted = normalizeOrder(res.order);
       setOrders(prev => {
         // Update existing order in-place without duplicating
         const next = prev.map(o => (
-          String(o.id) === String(orderId) || 
-          o.orderNumber === orderId || 
+          String(o.id) === cleanId || 
+          o.orderNumber === cleanId || 
+          (cleanId.startsWith('#') && o.orderNumber === cleanId.substring(1)) ||
+          (o.orderNumber && '#' + o.orderNumber === cleanId) ||
           (accepted && (o.orderNumber === accepted.orderNumber || String(o.id) === String(accepted.id)))
         ) 
           ? { ...o, ...accepted, orderStatus: 'APPROVED' } 
@@ -276,7 +279,7 @@ export default function App() {
         saveStoredOrders(next);
         return next;
       });
-      showToast(`✅ Order ${accepted.orderNumber} approved! Status updated to APPROVED in buyer dashboard.`);
+      showToast(`✅ Order ${accepted.orderNumber || accepted.id} approved! Status updated to APPROVED in buyer dashboard.`);
       refreshOrders();
     } else {
       showToast(`⚠️ ${res.error || 'Failed to approve order.'}`);
@@ -285,14 +288,22 @@ export default function App() {
 
   // Handle Farmer Rejecting Order (Transitions PENDING -> REJECTED)
   const handleRejectOrder = async (orderId) => {
-    const targetOrder = orders.find(o => String(o.id) === String(orderId) || o.orderNumber === orderId);
+    const cleanId = String(orderId).trim();
+    const targetOrder = orders.find(o => 
+      String(o.id) === cleanId || 
+      o.orderNumber === cleanId ||
+      (cleanId.startsWith('#') && o.orderNumber === cleanId.substring(1)) ||
+      (o.orderNumber && '#' + o.orderNumber === cleanId)
+    );
     const res = await rejectPurchaseOrder(orderId);
     if (res.success) {
       const rejected = res.order ? normalizeOrder(res.order) : null;
       setOrders(prev => {
         const next = prev.map(o => (
-          String(o.id) === String(orderId) || 
-          o.orderNumber === orderId || 
+          String(o.id) === cleanId || 
+          o.orderNumber === cleanId || 
+          (cleanId.startsWith('#') && o.orderNumber === cleanId.substring(1)) ||
+          (o.orderNumber && '#' + o.orderNumber === cleanId) ||
           (rejected && (o.orderNumber === rejected.orderNumber || String(o.id) === String(rejected.id)))
         ) 
           ? { ...o, ...(rejected || {}), orderStatus: 'REJECTED', paymentStatus: 'REFUNDED' } 
@@ -316,7 +327,7 @@ export default function App() {
         }));
       }
 
-      showToast(`❌ Order request rejected. Status updated to REJECTED in buyer dashboard.`);
+      showToast(`❌ Order ${rejected?.orderNumber || rejected?.id || orderId} rejected. Status updated to REJECTED in buyer dashboard.`);
       refreshOrders();
     } else {
       showToast(`⚠️ ${res.error || 'Failed to reject order.'}`);

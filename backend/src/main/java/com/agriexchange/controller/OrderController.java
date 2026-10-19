@@ -170,6 +170,14 @@ public class OrderController {
                 Order updated = orderService.dispatchOrder(identifier, user);
                 return ResponseEntity.ok(updated);
             }
+            if ("APPROVED".equalsIgnoreCase(newStatus.trim())) {
+                Order updated = orderService.acceptOrder(identifier, user);
+                return ResponseEntity.ok(updated);
+            }
+            if ("REJECTED".equalsIgnoreCase(newStatus.trim())) {
+                Order updated = orderService.rejectOrder(identifier, user);
+                return ResponseEntity.ok(updated);
+            }
             Order updated = orderService.updateOrderStatus(identifier, newStatus.trim(), user);
             return ResponseEntity.ok(updated);
         } catch (IllegalArgumentException ex) {

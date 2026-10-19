@@ -137,4 +137,72 @@ public class OrderDispatchControllerTest {
                 .andExpect(jsonPath("$.orderStatus", is("DISPATCHED")))
                 .andExpect(jsonPath("$.dispatchedAt", notNullValue()));
     }
+
+    @Test
+    @DisplayName("PATCH /api/orders/{id}/accept - Success with Authenticated Farmer")
+    void testAcceptOrderSuccess() throws Exception {
+        Order pendingOrder = new Order();
+        pendingOrder.setOrderNumber("ORD-PENDING-" + System.currentTimeMillis() % 100000);
+        pendingOrder.setBuyer(buyerMehta);
+        pendingOrder.setFarmer(farmerGurpreet);
+        pendingOrder.setProduct(testProduct);
+        pendingOrder.setQuantityTons(10.0);
+        pendingOrder.setPricePerTon(2600.0);
+        pendingOrder.setSubtotalAmount(26000.0);
+        pendingOrder.setTotalAmount(27300.0);
+        pendingOrder.setDeliveryAddress("EcoTech Gate 2");
+        pendingOrder.setOrderStatus("PENDING");
+        pendingOrder = orderRepository.save(pendingOrder);
+
+        mockMvc.perform(patch("/api/orders/" + pendingOrder.getOrderNumber() + "/accept")
+                .header("Authorization", "Bearer " + farmerGurpreetToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderStatus", is("APPROVED")))
+                .andExpect(jsonPath("$.orderNumber", is(pendingOrder.getOrderNumber())));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/orders/{id}/reject - Success with Authenticated Farmer")
+    void testRejectOrderSuccess() throws Exception {
+        Order pendingOrder = new Order();
+        pendingOrder.setOrderNumber("ORD-REJ-" + System.currentTimeMillis() % 100000);
+        pendingOrder.setBuyer(buyerMehta);
+        pendingOrder.setFarmer(farmerGurpreet);
+        pendingOrder.setProduct(testProduct);
+        pendingOrder.setQuantityTons(10.0);
+        pendingOrder.setPricePerTon(2600.0);
+        pendingOrder.setSubtotalAmount(26000.0);
+        pendingOrder.setTotalAmount(27300.0);
+        pendingOrder.setDeliveryAddress("EcoTech Gate 2");
+        pendingOrder.setOrderStatus("PENDING");
+        pendingOrder = orderRepository.save(pendingOrder);
+
+        mockMvc.perform(patch("/api/orders/" + pendingOrder.getOrderNumber() + "/reject")
+                .header("Authorization", "Bearer " + farmerGurpreetToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.orderStatus", is("REJECTED")))
+                .andExpect(jsonPath("$.paymentStatus", is("REFUNDED")));
+    }
+
+    @Test
+    @DisplayName("PATCH /api/orders/{id}/accept - Unauthorized Farmer Fails with 403")
+    void testUnauthorizedFarmerAcceptFails() throws Exception {
+        Order pendingOrder = new Order();
+        pendingOrder.setOrderNumber("ORD-UNAUTH-" + System.currentTimeMillis() % 100000);
+        pendingOrder.setBuyer(buyerMehta);
+        pendingOrder.setFarmer(farmerGurpreet);
+        pendingOrder.setProduct(testProduct);
+        pendingOrder.setQuantityTons(10.0);
+        pendingOrder.setPricePerTon(2600.0);
+        pendingOrder.setSubtotalAmount(26000.0);
+        pendingOrder.setTotalAmount(27300.0);
+        pendingOrder.setDeliveryAddress("EcoTech Gate 2");
+        pendingOrder.setOrderStatus("PENDING");
+        pendingOrder = orderRepository.save(pendingOrder);
+
+        mockMvc.perform(patch("/api/orders/" + pendingOrder.getOrderNumber() + "/accept")
+                .header("Authorization", "Bearer " + farmerPatilToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error", containsString("Unauthorized")));
+    }
 }

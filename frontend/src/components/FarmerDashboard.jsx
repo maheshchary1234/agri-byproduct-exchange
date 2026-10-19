@@ -35,6 +35,29 @@ export default function FarmerDashboard({
   const [salesYearFilter, setSalesYearFilter] = useState('ALL');
   const [salesProductFilter, setSalesProductFilter] = useState('ALL');
 
+  // Loading state for order actions
+  const [processingOrderId, setProcessingOrderId] = useState(null);
+
+  const handleApproveClick = async (orderRef) => {
+    if (!onAcceptOrder || processingOrderId) return;
+    setProcessingOrderId(orderRef);
+    try {
+      await onAcceptOrder(orderRef);
+    } finally {
+      setProcessingOrderId(null);
+    }
+  };
+
+  const handleRejectClick = async (orderRef) => {
+    if (!onRejectOrder || processingOrderId) return;
+    setProcessingOrderId(orderRef);
+    try {
+      await onRejectOrder(orderRef);
+    } finally {
+      setProcessingOrderId(null);
+    }
+  };
+
   // Filter products belonging to current farmer
   const myProducts = useMemo(() => {
     if (!currentUser) return [];
@@ -52,10 +75,14 @@ export default function FarmerDashboard({
     if (!currentUser) return [];
     const cId = String(currentUser.id || '');
     const cName = (currentUser.name || currentUser.username || '').toLowerCase().trim();
+    const cEmail = (currentUser.email || '').toLowerCase().trim();
     return orders.filter(o => {
       const oFarmerId = String(o.farmerId || (o.farmer && o.farmer.id) || '');
       const oFarmerName = (o.farmerName || (o.farmer && o.farmer.name) || '').toLowerCase().trim();
-      return (oFarmerId && cId && oFarmerId === cId) || (oFarmerName && cName && oFarmerName === cName);
+      const oFarmerEmail = (o.farmerEmail || (o.farmer && o.farmer.email) || '').toLowerCase().trim();
+      return (oFarmerId && cId && oFarmerId === cId) || 
+             (oFarmerName && cName && oFarmerName === cName) ||
+             (oFarmerEmail && cEmail && oFarmerEmail === cEmail);
     });
   }, [orders, currentUser]);
 
@@ -489,19 +516,23 @@ export default function FarmerDashboard({
                                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                                   <button
                                     type="button"
+                                    id={`btn-approve-${order.id || order.orderNumber}`}
                                     className="btn-primary"
-                                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem' }}
-                                    onClick={() => onAcceptOrder && onAcceptOrder(order.orderNumber || order.id)}
+                                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', opacity: processingOrderId ? 0.7 : 1 }}
+                                    disabled={Boolean(processingOrderId)}
+                                    onClick={() => handleApproveClick(order.orderNumber || order.id)}
                                   >
-                                    ✓ {t('farmer_dash.btn_approve', 'Approve')}
+                                    {processingOrderId === (order.orderNumber || order.id) ? '⏳ Approving...' : `✓ ${t('farmer_dash.btn_approve', 'Approve')}`}
                                   </button>
                                   <button
                                     type="button"
+                                    id={`btn-reject-${order.id || order.orderNumber}`}
                                     className="btn-secondary"
-                                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: 'var(--red-600)', borderColor: '#fca5a5' }}
-                                    onClick={() => onRejectOrder && onRejectOrder(order.orderNumber || order.id)}
+                                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.78rem', color: 'var(--red-600)', borderColor: '#fca5a5', opacity: processingOrderId ? 0.7 : 1 }}
+                                    disabled={Boolean(processingOrderId)}
+                                    onClick={() => handleRejectClick(order.orderNumber || order.id)}
                                   >
-                                    ✕ {t('farmer_dash.btn_reject', 'Reject')}
+                                    {processingOrderId === (order.orderNumber || order.id) ? '⏳ Rejecting...' : `✕ ${t('farmer_dash.btn_reject', 'Reject')}`}
                                   </button>
                                 </div>
                               ) : statusUpper === 'APPROVED' ? (
