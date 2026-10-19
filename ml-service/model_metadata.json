@@ -1,0 +1,67 @@
+{
+  "model_name": "AgriByProduct-XGBoost-PricePredictor",
+  "version": "1.2.0",
+  "algorithm": "XGBRegressor (Gradient Boosted Trees)",
+  "rmse": 124.42,
+  "mae": 94.56,
+  "r2_score": 0.9765,
+  "training_samples": 7500,
+  "features": {
+    "categorical": [
+      "byproduct_type",
+      "state",
+      "season"
+    ],
+    "numerical": [
+      "moisture_content_percent",
+      "organic_matter_percent",
+      "quantity_tons",
+      "transport_distance_km"
+    ]
+  },
+  "supported_byproducts": [
+    "rice_straw",
+    "wheat_straw",
+    "sugarcane_bagasse",
+    "corn_cob",
+    "cotton_stalk",
+    "coir_pith",
+    "mustard_husk",
+    "poultry_litter"
+  ],
+  "base_prices": {
+    "rice_straw": 2400.0,
+    "wheat_straw": 3400.0,
+    "sugarcane_bagasse": 2800.0,
+    "corn_cob": 3550.0,
+    "cotton_stalk": 3050.0,
+    "coir_pith": 5300.0,
+    "mustard_husk": 2950.0,
+    "poultry_litter": 1850.0
+  },
+  "optimal_moisture": {
+    "rice_straw": 12.0,
+    "wheat_straw": 10.0,
+    "sugarcane_bagasse": 18.0,
+    "corn_cob": 11.0,
+    "cotton_stalk": 12.0,
+    "coir_pith": 15.0,
+    "mustard_husk": 10.0,
+    "poultry_litter": 20.0
+  },
+  "supported_states": [
+    "Punjab",
+    "Haryana",
+    "Maharashtra",
+    "Tamil Nadu",
+    "Uttar Pradesh",
+    "Karnataka",
+    "Gujarat",
+    "Madhya Pradesh"
+  ],
+  "supported_seasons": [
+    "Kharif",
+    "Rabi",
+    "Zaid"
+  ]
+}

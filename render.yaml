@@ -1,0 +1,29 @@
+services:
+  # 1. Spring Boot Backend Web Service
+  - type: web
+    name: agri-backend
+    runtime: docker
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    plan: free
+    region: oregon
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: dev
+      - key: AGRI_JWT_SECRET
+        value: 9a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b
+      - key: AGRI_ML_SERVICE_URL
+        fromService:
+          type: web
+          name: agri-ml-service
+          property: host
+
+  # 2. Python XGBoost ML Web Service
+  - type: web
+    name: agri-ml-service
+    runtime: python
+    rootDir: ml-service
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 2 -b 0.0.0.0:$PORT app:app
+    plan: free
+    region: oregon
