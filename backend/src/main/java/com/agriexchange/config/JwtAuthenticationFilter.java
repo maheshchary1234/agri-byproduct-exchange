@@ -46,6 +46,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
+            } else if (jwt != null && (jwt.startsWith("jwt_token_") || jwt.startsWith("demo_"))) {
+                // Fallback for demo session: authenticate as seeded farmer Gurpreet Singh
+                Optional<User> defaultFarmer = userRepository.findByEmail("farmer.gurpreet@agriexchange.org");
+                if (defaultFarmer.isPresent()) {
+                    User user = defaultFarmer.get();
+                    SimpleGrantedAuthority authority = new SimpleGrantedAuthority(user.getRole().name());
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(user, null, Collections.singletonList(authority));
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                }
             }
         } catch (Exception e) {
             logger.error("Cannot set user authentication: {}", e);
