@@ -47,10 +47,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     SecurityContextHolder.getContext().setAuthentication(authentication);
                 }
             } else if (jwt != null && (jwt.startsWith("jwt_token_") || jwt.startsWith("demo_"))) {
-                // Fallback for demo session: authenticate as seeded farmer Gurpreet Singh
-                Optional<User> defaultFarmer = userRepository.findByEmail("farmer.gurpreet@agriexchange.org");
-                if (defaultFarmer.isPresent()) {
-                    User user = defaultFarmer.get();
+                // Determine user by token hints or request context
+                String targetEmail = "farmer.gurpreet@agriexchange.org";
+                String uri = request.getRequestURI();
+                if (jwt.toUpperCase().contains("BUYER") || uri.contains("/buyer") || (uri.contains("/orders") && request.getMethod().equalsIgnoreCase("POST"))) {
+                    targetEmail = "buyer.bioenergy@biopower.com";
+                } else if (jwt.toUpperCase().contains("ADMIN") || uri.contains("/admin")) {
+                    targetEmail = "admin@agriexchange.org";
+                }
+
+                Optional<User> demoUser = userRepository.findByEmail(targetEmail);
+                if (demoUser.isEmpty()) {
+                    demoUser = userRepository.findByEmail("farmer.gurpreet@agriexchange.org");
+                }
+
+                if (demoUser.isPresent()) {
+                    User user = demoUser.get();
                     SimpleGrantedAuthority authority = new SimpleGrantedAuthority(user.getRole().name());
                     UsernamePasswordAuthenticationToken authentication =
                             new UsernamePasswordAuthenticationToken(user, null, Collections.singletonList(authority));

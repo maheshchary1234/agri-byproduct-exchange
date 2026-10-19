@@ -56,6 +56,8 @@ public class SecurityConfig {
                 .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/products/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
                 .requestMatchers(org.springframework.http.HttpMethod.PUT, "/api/products/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
                 .requestMatchers(org.springframework.http.HttpMethod.DELETE, "/api/products/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
+                .requestMatchers("/api/orders/**").hasAnyAuthority("ROLE_BUYER", "ROLE_FARMER", "ROLE_ADMIN")
+                .requestMatchers("/api/inquiries/**").hasAnyAuthority("ROLE_BUYER", "ROLE_FARMER", "ROLE_ADMIN")
                 .requestMatchers("/api/farmer/**").hasAnyAuthority("ROLE_FARMER", "ROLE_ADMIN")
                 .requestMatchers("/api/buyer/**").hasAnyAuthority("ROLE_BUYER", "ROLE_ADMIN")
                 .requestMatchers("/api/admin/**").hasAuthority("ROLE_ADMIN")
